@@ -37,8 +37,27 @@ const Dashboard = () => {
   }
 
   useEffect(() => {
-    fetchUrls()
-  }, [])
+  fetchUrls()
+
+  const token = localStorage.getItem('token')
+  const es = new EventSource(`${API_URL}/sse/connect?token=${token}`)
+
+  es.onmessage = (event) => {
+    const data = JSON.parse(event.data)
+
+    setUrls((prev) =>
+      prev.map((u) =>
+        u.shortUrl === data.shortUrl
+          ? { ...u, clickCount: data.clickCount }
+          : u
+      )
+    )
+  }
+
+  return () => {
+    es.close()
+  }
+}, [])
 
   const totalClicks = urls.reduce((sum, u) => sum + (u.clickCount || 0), 0)
   const totalLinks = urls.length
