@@ -11,17 +11,38 @@ import Navbar from '../Components/Navbar'
 import Footer from '../Components/Footer'
 import API_URL from '../api/Config'
 
+// ✅ FIX: Helper to safely parse LocalDate regardless of whether
+// Spring sends it as "2026-04-15" (string) or [2026, 4, 15] (array)
+const parseDate = (raw) => {
+  if (!raw) return 'Unknown'
+  if (Array.isArray(raw)) {
+    const [y, m, d] = raw
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+  }
+  return raw // already a string
+}
+
+// ✅ FIX: Get default range as last 7 days instead of just today
+const getDefaultDates = () => {
+  const end = new Date()
+  const start = new Date()
+  start.setDate(end.getDate() - 6) // 7-day window
+
+  const fmt = (d) => d.toISOString().split('T')[0]
+  return { start: fmt(start), end: fmt(end) }
+}
+
 const Analytics = () => {
   const { shortUrl } = useParams()
   const navigate = useNavigate()
   const token = localStorage.getItem('token')
 
-  const today = new Date().toISOString().split('T')[0]
+  const { start: defaultStart, end: defaultEnd } = getDefaultDates()
 
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
-  const [startDate, setStartDate] = useState(today)
-  const [endDate, setEndDate] = useState(today)
+  const [startDate, setStartDate] = useState(defaultStart) // ✅ last 7 days
+  const [endDate, setEndDate] = useState(defaultEnd)
 
   const fetchAnalytics = async () => {
     setLoading(true)
@@ -34,11 +55,11 @@ const Analytics = () => {
         headers: { Authorization: `Bearer ${token}` }
       })
 
-      // ✅ backend already returns aggregated data
+      // ✅ FIX: Use parseDate() to handle both string and array formats from Spring
       setData(
         res.data.map(i => ({
-          date: i.clickDate,
-          clicks: i.count
+          date: parseDate(i.clickDate),
+          clicks: i.count ?? 0
         }))
       )
 
@@ -55,6 +76,9 @@ const Analytics = () => {
 
   const totalClicks = data.reduce((a, d) => a + d.clicks, 0)
 
+  // ✅ FIX: Only count days with actual clicks, not zero-filled days
+  const activeDays = data.filter(d => d.clicks > 0).length
+
   const peakDay = data.length
     ? data.reduce((m, d) => d.clicks > m.clicks ? d : m, data[0])
     : null
@@ -65,7 +89,6 @@ const Analytics = () => {
 
       <div className="max-w-5xl mx-auto px-6 py-10 w-full flex-1">
 
-        {/* Header */}
         <div className="flex items-center gap-3 mb-10">
           <button
             onClick={() => navigate('/dashboard')}
@@ -73,7 +96,6 @@ const Analytics = () => {
           >
             <ArrowLeft size={18} />
           </button>
-
           <div>
             <h1 className="text-2xl font-semibold">Analytics</h1>
             <p className="text-gray-500 text-sm font-mono">/{shortUrl}</p>
@@ -89,16 +111,17 @@ const Analytics = () => {
 
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <p className="text-xs text-gray-500 mb-1">Active days</p>
-            <p className="text-2xl font-semibold">{data.length}</p>
+            {/* ✅ FIX: use activeDays, not data.length */}
+            <p className="text-2xl font-semibold">{activeDays}</p>
           </div>
 
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <p className="text-xs text-gray-500 mb-1">Peak</p>
             <p className="text-2xl font-semibold">
-              {peakDay ? peakDay.clicks : '—'}
+              {peakDay && peakDay.clicks > 0 ? peakDay.clicks : '—'}
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              {peakDay ? peakDay.date : ''}
+              {peakDay && peakDay.clicks > 0 ? peakDay.date : ''}
             </p>
           </div>
         </div>
@@ -111,14 +134,12 @@ const Analytics = () => {
             onChange={(e) => setStartDate(e.target.value)}
             className="flex-1 bg-white border border-gray-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-black"
           />
-
           <input
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
             className="flex-1 bg-white border border-gray-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-black"
           />
-
           <button
             onClick={fetchAnalytics}
             disabled={loading}
@@ -130,9 +151,7 @@ const Analytics = () => {
 
         {/* Chart */}
         <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <p className="text-sm font-medium mb-6">
-            Clicks over time
-          </p>
+          <p className="text-sm font-medium mb-6">Clicks over time</p>
 
           {loading ? (
             <div className="h-64 bg-gray-100 rounded-lg animate-pulse" />
@@ -144,33 +163,24 @@ const Analytics = () => {
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={data} barSize={28}>
                 <CartesianGrid stroke="#e5e7eb" vertical={false} />
-
                 <XAxis
                   dataKey="date"
                   tick={{ fontSize: 11, fill: '#6b7280' }}
                   axisLine={false}
                   tickLine={false}
                 />
-
                 <YAxis
                   tick={{ fontSize: 11, fill: '#6b7280' }}
                   axisLine={false}
                   tickLine={false}
                   allowDecimals={false}
                 />
-
                 <Tooltip />
-
-                <Bar
-                  dataKey="clicks"
-                  fill="#111827"
-                  radius={[6, 6, 0, 0]}
-                />
+                <Bar dataKey="clicks" fill="#111827" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
         </div>
-
       </div>
 
       <Footer />
