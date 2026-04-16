@@ -11,10 +11,18 @@ const Home = () => {
   const [url, setUrl] = useState('')
   const [shortUrl, setShortUrl] = useState('')
   const [loading, setLoading] = useState(false)
+  const [cooldown, setCooldown] = useState(false)
+
   const navigate = useNavigate()
   const token = localStorage.getItem('token')
 
   const handleShorten = async () => {
+    // ✅ cooldown feedback
+    if (cooldown) {
+      toast.error('Please wait a few seconds before trying again')
+      return
+    }
+
     if (!url.startsWith('http')) {
       toast.error('Enter a valid URL')
       return
@@ -37,8 +45,25 @@ const Home = () => {
 
       setShortUrl(`${API_URL}/${res.data.shortUrl}`)
       toast.success('Short link created')
-    } catch {
-      toast.error('Something went wrong')
+
+      // ✅ cooldown after success
+      setCooldown(true)
+      setTimeout(() => setCooldown(false), 3000)
+
+    } catch (err) {
+      if (err.response?.status === 429) {
+        toast.error('Too many requests. Please wait a few seconds.')
+
+        // ✅ cooldown on rate limit
+        setCooldown(true)
+        setTimeout(() => setCooldown(false), 3000)
+
+      } else if (err.response?.status === 401) {
+        toast.error('Session expired. Please login again.')
+        navigate('/login')
+      } else {
+        toast.error('Something went wrong')
+      }
     } finally {
       setLoading(false)
     }
@@ -84,17 +109,22 @@ const Home = () => {
 
           <button
             onClick={handleShorten}
-            disabled={loading}
-            className="bg-black text-white px-5 py-2 rounded-lg text-sm font-medium hover:opacity-80 transition"
+            disabled={loading || cooldown}
+            className="bg-black text-white px-5 py-2 rounded-lg text-sm font-medium hover:opacity-80 transition disabled:opacity-50"
           >
-            {loading ? '...' : 'Shorten'}
+            {loading ? '...' : cooldown ? 'Wait...' : 'Shorten'}
           </button>
         </div>
 
         {/* RESULT */}
         {shortUrl && (
           <div className="w-full max-w-xl bg-white border border-gray-200 rounded-xl px-4 py-3 flex justify-between items-center">
-            <a href={shortUrl} target="_blank" rel="noreferrer" className="text-sm text-black truncate">
+            <a
+              href={shortUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm text-black truncate"
+            >
               {shortUrl}
             </a>
             <button onClick={copy}>
